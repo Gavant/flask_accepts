@@ -21,6 +21,7 @@ def accepts(
     many: bool = False,
     api=None,
     use_swagger: bool = True,
+    doc_only: bool = False
 ):
     """
     Wrap a Flask route with input validation using a combination of reqparse from
@@ -44,6 +45,8 @@ def accepts(
             return a list of the corresponding schema objects when set to True. This
             flag corresopnds only to the request body schema, and not the
             `query_params_schema` or `headers_schema` arguments.
+        doc_only (bool, optional): Indicates that the schema should be used only for swagger documentation and
+        not have input validated.
 
     Returns:
         The wrapped route
@@ -101,75 +104,76 @@ def accepts(
 
         @wraps(func)
         def inner(*args, **kwargs):
-            from flask import request
+            if not doc_only:
+                from flask import request
 
-            error = schema_error = None
+                error = schema_error = None
 
-            # Handle arguments
-            try:
-                request.parsed_args = _parser.parse_args()
-            except Exception as e:
-                error = e
-
-            # Handle Marshmallow schema for request body
-            if schema:
+                # Handle arguments
                 try:
-                    obj = schema.load(request.get_json(force=True))
-                    request.parsed_obj = obj
-                except ValidationError as ex:
-                    schema_error = ex.messages
-                if schema_error:
-                    error = error or BadRequest(
-                        f"Error parsing request body: {schema_error}"
-                    )
-                    if hasattr(error, "data"):
-                        error.data["errors"].update({"schema_errors": schema_error})
-                    else:
-                        error.data = {"schema_errors": schema_error}
+                    request.parsed_args = _parser.parse_args()
+                except Exception as e:
+                    error = e
 
-            # Handle Marshmallow schema for query params
-            if query_params_schema:
-                request_args = _convert_multidict_values_to_schema(
-                    request.args,
-                    query_params_schema)
+                # Handle Marshmallow schema for request body
+                if schema:
+                    try:
+                        obj = schema.load(request.get_json(force=True))
+                        request.parsed_obj = obj
+                    except ValidationError as ex:
+                        schema_error = ex.messages
+                    if schema_error:
+                        error = error or BadRequest(
+                            f"Error parsing request body: {schema_error}"
+                        )
+                        if hasattr(error, "data"):
+                            error.data["errors"].update({"schema_errors": schema_error})
+                        else:
+                            error.data = {"schema_errors": schema_error}
 
-                try:
-                    obj = query_params_schema.load(request_args)
-                    request.parsed_query_params = obj
-                except ValidationError as ex:
-                    schema_error = ex.messages
-                if schema_error:
-                    error = error or BadRequest(
-                        f"Error parsing query params: {schema_error}"
-                    )
-                    if hasattr(error, "data"):
-                        error.data["errors"].update({"schema_errors": schema_error})
-                    else:
-                        error.data = {"schema_errors": schema_error}
+                # Handle Marshmallow schema for query params
+                if query_params_schema:
+                    request_args = _convert_multidict_values_to_schema(
+                        request.args,
+                        query_params_schema)
 
-            # Handle Marshmallow schema for headers
-            if headers_schema:
-                request_headers = _convert_multidict_values_to_schema(
-                    request.headers,
-                    headers_schema)
+                    try:
+                        obj = query_params_schema.load(request_args)
+                        request.parsed_query_params = obj
+                    except ValidationError as ex:
+                        schema_error = ex.messages
+                    if schema_error:
+                        error = error or BadRequest(
+                            f"Error parsing query params: {schema_error}"
+                        )
+                        if hasattr(error, "data"):
+                            error.data["errors"].update({"schema_errors": schema_error})
+                        else:
+                            error.data = {"schema_errors": schema_error}
 
-                try:
-                    obj = headers_schema.load(request_headers)
-                    request.parsed_headers = obj
-                except ValidationError as ex:
-                    schema_error = ex.messages
-                if schema_error:
-                    error = error or BadRequest(
-                        f"Error parsing headers: {schema_error}"
-                    )
-                    if hasattr(error, "data"):
-                        error.data["errors"].update({"schema_errors": schema_error})
-                    else:
-                        error.data = {"schema_errors": schema_error}
+                # Handle Marshmallow schema for headers
+                if headers_schema:
+                    request_headers = _convert_multidict_values_to_schema(
+                        request.headers,
+                        headers_schema)
 
-            # If any parsing produced an error, combine them and re-raise
-            if error:
-                raise error
+                    try:
+                        obj = headers_schema.load(request_headers)
+                        request.parsed_headers = obj
+                    except ValidationError as ex:
+                        schema_error = ex.messages
+                    if schema_error:
+                        error = error or BadRequest(
+                            f"Error parsing headers: {schema_error}"
+                        )
+                        if hasattr(error, "data"):
+                            error.data["errors"].update({"schema_errors": schema_error})
+                        else:
+                            error.data = {"schema_errors": schema_error}
+
+                # If any parsing produced an error, combine them and re-raise
+                if error:
+                    raise error
 
             return func(*args, **kwargs)
 
